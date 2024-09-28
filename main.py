@@ -14,7 +14,6 @@ global ptom, ptos, ptou
 # Initialize global variables
 ppsm = stsm = stim = ppss = stss = stis = ppsu = stsu = stiu = 0
 perm = pers = peru = stes = steu = stem = 0
-itom = itos = itou = 0
 stom = stos = stou = 0
 ptom = ptos = ptou = 0
 t = tpi = 0
@@ -96,19 +95,20 @@ def arrival_time_for_day(day, ip_semana, ip_finde):
 def input_delivery_personnel(zone):
     return int(input(f"Ingrese la cantidad de repartidores de la zona {zone}: "))
 
-def deliver_order(tpe, i, sts, ns, delivery_personnel, day, ito, te_semana, te_finde):
+def deliver_order(tpe, i, sts, ste, ns, delivery_personnel, day, ito, te_semana, te_finde):
     global t
     t = tpe[i]
-    sts = t
+    sts += t
     ns -= 1
     if ns >= delivery_personnel:
         te = delivery_time_for_day(day, te_semana, te_finde)
         tpe[i] = t + te
-        return sts + te
+        ste += te
     else:
         tpe[i] = HV
-        ito = t
-        return sts
+        ito[i] = t
+
+    return (sts, ste)
 
 def arrival_time(day, ip_semana, ip_finde):
     r1, r2 = np.random.random(2)
@@ -134,16 +134,16 @@ def order_arrival(ip_semana, ip_finde, day, ns, delivery_personnel, ito, te_find
         te = delivery_time_for_day(day, te_semana, te_finde)
         tpe[i] = t + te
         ste += te
-        sto += t - ito
+        sto += t - ito[i]
 
-    return (sti, ste)
+    return (sti, ste, sto)
 
 def process_order(r1):
     global nsm, nsu, nss
     
 
 def simulation(ip_semana, ip_finde, te_semana, te_finde):
-    global t, tpi, nsm, nss, nsu, stim, stiu, stis, stem, steu, stes
+    global t, tpi, nsm, nss, nsu, stim, stiu, stis, stem, steu, stes, stou, stos, stom, stsm, stss, stsu
     m = input_delivery_personnel("Metropolitana")
     u = input_delivery_personnel("Urbana")
     s = input_delivery_personnel("Semi-Urbana")
@@ -152,8 +152,12 @@ def simulation(ip_semana, ip_finde, te_semana, te_finde):
     tpem = np.full(m, HV)
     tpes = np.full(s, HV)
     tpeu = np.full(u, HV)
+    itom = np.full(m, t)
+    itos = np.full(s, t)
+    itou = np.full(u, t)
+    
 
-    while t < tf or nsm > 0 or nss > 0 or nsu > 0:
+    while t < tf:
         x = np.argmin(tpes)
         i = np.argmin(tpem)
         j = np.argmin(tpeu)
@@ -164,23 +168,40 @@ def simulation(ip_semana, ip_finde, te_semana, te_finde):
             t = tpi
             r = np.random.random()
             if r <= 0.768:
-                stim , stem = order_arrival(ip_semana, ip_finde, day, nsm, m, itom, te_finde, te_semana, tpem, stom, stim, stem)
+                stim , stem, stom = order_arrival(ip_semana, ip_finde, day, nsm, m, itom, te_finde, te_semana, tpem, stom, stim, stem)
             elif r <= 0.996:
-                stiu , steu = order_arrival(ip_semana, ip_finde, day, nsu, u, itou, te_finde, te_semana, tpeu, stou, stiu, steu)
+                stiu , steu, stou = order_arrival(ip_semana, ip_finde, day, nsu, u, itou, te_finde, te_semana, tpeu, stou, stiu, steu)
             else:
-                stis , stes = order_arrival(ip_semana, ip_finde, day, nss, s, itos, te_finde, te_semana, tpes, stos, stis, stes)
+                stis , stes, stos = order_arrival(ip_semana, ip_finde, day, nss, s, itos, te_finde, te_semana, tpes, stos, stis, stes)
         elif next_event == tpem[i]:
-            deliver_order(tpem, i, stsm, nsm, m, day, ptom, te_semana, te_finde)
+            stsm, stem = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde)
         elif next_event == tpes[x]:
-            deliver_order(tpes, x, stss, nss, s, day, ptos, te_semana, te_finde)
+            stss, stes = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde)
         elif next_event == tpeu[j]:
-            deliver_order(tpeu, j, stsu, nsu, u, day, ptou, te_semana, te_finde)
+            stsu, steu = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde)
+
+    while (nsm > 0 or nsu > 0 or nss > 0):
+        x = np.argmin(tpes)
+        i = np.argmin(tpem)
+        j = np.argmin(tpeu)
+
+        next_event = min(tpeu[j], tpem[i], tpes[x])
+        
+        if next_event == tpem[i]:
+            stsm, stem = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde)
+        elif next_event == tpes[x]:
+            stss, stes = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde)
+        elif next_event == tpeu[j]:
+            stsu, steu = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde)
+    
+    if stos == 0:
+        stos = t
 
 
 def calcular_y_mostrar_resultados():
     global stom, stos, stou, t
     global stsm, stim, stss, stis, stiu, stsu, nt
-    global stsm, stim, stem, stss, stis, stes, stsu, stiu, steu
+    global stem, stes, steu
 
     print(f"Porcentaje de tiempo ocioso de repartidores en la zona metropolitana: {(stom / t) * 100} minutos")
     print(f"Porcentaje de tiempo ocioso de repartidores en la zona semi-urbana: {(stos / t) * 100 } minutos")
