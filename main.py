@@ -18,7 +18,7 @@ itom = itos = itou = 0
 stom = stos = stou = 0
 ptom = ptos = ptou = 0
 t = tpi = 0
-tf = 400  # mins
+tf = 100  # mins
 nsm = nss = nsu = nt = 0
 HV = float('inf')
 
@@ -84,7 +84,6 @@ def time_for_fdp(kde):
     density_values = kde(x_range)
     density_values /= np.sum(density_values)
     return np.random.choice(x_range, p=density_values)
-
 
 def delivery_time_for_day(day, te_semana, te_finde):
     weekend_days = ["viernes", "sabado", "domingo"]
@@ -154,7 +153,7 @@ def simulation(ip_semana, ip_finde, te_semana, te_finde):
     tpes = np.full(s, HV)
     tpeu = np.full(u, HV)
 
-    while t < tf:
+    while t < tf or nsm > 0 or nss > 0 or nsu > 0:
         x = np.argmin(tpes)
         i = np.argmin(tpem)
         j = np.argmin(tpeu)
@@ -196,7 +195,7 @@ def calcular_y_mostrar_resultados():
     print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona urbana: {(stsu - stiu - steu) / nt} minutos")
 
 if __name__ == "__main__":
-    df = load_and_preprocess_data('Zomato Dataset.csv')
+    df = load_and_preprocess_data('zomato-dataset.csv')
     ip_semana, ip_finde, te_semana, te_finde = calculate_kde(df)
     simulation(ip_semana, ip_finde, te_semana, te_finde)
     calcular_y_mostrar_resultados()
