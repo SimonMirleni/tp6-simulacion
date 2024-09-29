@@ -7,7 +7,8 @@ import re
 # Global variables
 global ppsm, stsm, stim, ppss, stss, stis, ppsu, stsu, stiu
 global perm, pers, peru, stes, steu, stem
-global t, tpi, tf, nsm, nss, nsu, nt, HV
+global t, tpi, tf, nsm, nss, nsu, nts, ntu, ntm, HV
+global m, s, u
 global itom, itos, itou
 global stom, stos, stou
 global ptom, ptos, ptou
@@ -17,9 +18,18 @@ perm = pers = peru = stes = steu = stem = 0
 stom = stos = stou = 0
 ptom = ptos = ptou = 0
 t = tpi = 0
-tf = 100  # mins
-nsm = nss = nsu = nt = 0
+tf = 100000  # mins
+nsm = nss = nsu = nts = ntu = ntm = 0
 HV = float('inf')
+
+def optimize_kde(kde, num_points=1000, max_time=120):
+    """
+    Precompute KDE values for faster sampling.
+    """
+    x_range = np.linspace(0, max_time, num_points)
+    density_values = kde(x_range)
+    density_values /= np.sum(density_values)
+    return x_range, density_values
 
 def is_time_format(s):
     if not isinstance(s, str):
@@ -67,8 +77,12 @@ def calculate_kde(df):
     te_semana = stats.gaussian_kde(weekday_df['Time_taken (min)'])
     te_finde = stats.gaussian_kde(weekend_df['Time_taken (min)'])
 
-
-    return ip_semana, ip_finde, te_semana, te_finde
+    ip_semana_x, ip_semana_density = optimize_kde(ip_semana)
+    ip_finde_x, ip_finde_density = optimize_kde(ip_finde)
+    te_semana_x, te_semana_density = optimize_kde(te_semana)
+    te_finde_x, te_finde_density = optimize_kde(te_finde)
+    
+    return ip_semana_x, ip_semana_density, ip_finde_x, ip_finde_density, te_semana_x, te_semana_density, te_finde_x, te_finde_density
 
 def input_valid_day():
     days_of_week = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
@@ -78,72 +92,73 @@ def input_valid_day():
             return day
         print("Entrada no válida. Por favor, introduce un día de la semana válido.")
 
-def time_for_fdp(kde):
-    x_range = np.linspace(0, 60, 2000)
-    density_values = kde(x_range)
-    density_values /= np.sum(density_values)
+def time_for_fdp_optimized(x_range, density_values):
+    """
+    Optimized version of time_for_fdp using precomputed values.
+    """
     return np.random.choice(x_range, p=density_values)
 
-def delivery_time_for_day(day, te_semana, te_finde):
-    weekend_days = ["viernes", "sabado", "domingo"]
-    return time_for_fdp(te_finde if day in weekend_days else te_semana)
+#def time_for_fdp(kde):
+#    x_range = np.linspace(0, 60, 2000)
+#    density_values = kde(x_range)
+#    density_values /= np.sum(density_values)
+#    return np.random.choice(x_range, p=density_values)
 
-def arrival_time_for_day(day, ip_semana, ip_finde):
+def delivery_time_for_day(day, te_semana_x, te_semana_density, te_finde_x, te_finde_density):
     weekend_days = ["viernes", "sabado", "domingo"]
-    return time_for_fdp(ip_finde if day in weekend_days else ip_semana)
+    return time_for_fdp_optimized(te_finde_x, te_finde_density) if day in weekend_days else time_for_fdp_optimized(te_semana_x, te_semana_density)
+
+def arrival_time_for_day(day, ip_finde_x, ip_finde_density, ip_semana_x, ip_semana_density):
+    weekend_days = ["viernes", "sabado", "domingo"]
+    return time_for_fdp_optimized(ip_finde_x, ip_finde_density) if day in weekend_days else time_for_fdp_optimized(ip_semana_x, ip_semana_density)
 
 def input_delivery_personnel(zone):
     return int(input(f"Ingrese la cantidad de repartidores de la zona {zone}: "))
 
-def deliver_order(tpe, i, sts, ste, ns, delivery_personnel, day, ito, te_semana, te_finde):
+def deliver_order(tpe, i, sts, ste, ns, delivery_personnel, day, ito, te_semana, te_finde, te_semana_density, te_finde_density):
     global t
     t = tpe[i]
     sts += t
     ns -= 1
+    print(f"Sumatoria de tiempo de salida {sts}, en un t {t} min")
+    
     if ns >= delivery_personnel:
-        te = delivery_time_for_day(day, te_semana, te_finde)
+        te = delivery_time_for_day(day, te_semana, te_semana_density, te_finde, te_finde_density)
         tpe[i] = t + te
         ste += te
     else:
         tpe[i] = HV
         ito[i] = t
 
-    return (sts, ste)
-
-def arrival_time(day, ip_semana, ip_finde):
-    r1, r2 = np.random.random(2)
-    if r1 <= 0.768:
-        return delivery_time_for_day(day, ip_semana, ip_finde)
-    elif r1 <= 0.996:
-        return delivery_time_for_day(day, ip_semana, ip_finde)
-    else:
-        return delivery_time_for_day(day, ip_semana, ip_finde)
+    return (sts, ste, ns, ito)
 
 def buscar_repartidor_libre(tpe):
     return np.argmax(tpe)
 
-def order_arrival(ip_semana, ip_finde, day, ns, delivery_personnel, ito, te_finde, te_semana, tpe, sto, sti, ste):
-    global tpi, t, nt
-    ip = arrival_time(day, ip_semana, ip_finde)
+def order_arrival(ip_semana, ip_finde, day, ns, nt, delivery_personnel, ito, te_finde, te_semana, tpe, sto, sti, ste, ip_semana_density, ip_finde_density, te_semana_density, te_finde_density):
+    global tpi, t
+    ip = arrival_time_for_day(day, ip_semana, ip_semana_density, ip_finde_x, ip_finde_density)
     tpi = t + ip
     ns += 1
     nt += 1
     sti += t
+    print(f"Sumatoria de tiempo de ingreso {sti} min, en un t {t} min y un proximo pedido en {ip}")
     if ns <= delivery_personnel:
         i = buscar_repartidor_libre(tpe)
-        te = delivery_time_for_day(day, te_semana, te_finde)
+        te = delivery_time_for_day(day, te_semana, te_semana_density, te_finde, te_finde_density)
         tpe[i] = t + te
         ste += te
         sto += t - ito[i]
 
-    return (sti, ste, sto)
+    return (sti, ste, sto, ns, nt)
 
 def process_order(r1):
     global nsm, nsu, nss
     
 
-def simulation(ip_semana, ip_finde, te_semana, te_finde):
+def simulation(ip_semana, ip_semana_density, ip_finde, ip_finde_density, te_semana, te_semana_density, te_finde, te_finde_density):
     global t, tpi, nsm, nss, nsu, stim, stiu, stis, stem, steu, stes, stou, stos, stom, stsm, stss, stsu
+    global ntm, nts, ntu, m, s, u
     m = input_delivery_personnel("Metropolitana")
     u = input_delivery_personnel("Urbana")
     s = input_delivery_personnel("Semi-Urbana")
@@ -168,17 +183,23 @@ def simulation(ip_semana, ip_finde, te_semana, te_finde):
             t = tpi
             r = np.random.random()
             if r <= 0.768:
-                stim , stem, stom = order_arrival(ip_semana, ip_finde, day, nsm, m, itom, te_finde, te_semana, tpem, stom, stim, stem)
+                print("Llega un pedido a la zona metropolitana")
+                stim , stem, stom, nsm, ntm = order_arrival(ip_semana, ip_finde, day, nsm, ntm, m, itom, te_finde, te_semana, tpem, stom, stim, stem, ip_semana_density, ip_finde_density, te_semana_density, te_finde_density)
             elif r <= 0.996:
-                stiu , steu, stou = order_arrival(ip_semana, ip_finde, day, nsu, u, itou, te_finde, te_semana, tpeu, stou, stiu, steu)
+                print("Llega un pedido a la zona urbana")
+                stiu , steu, stou, nsu, ntu = order_arrival(ip_semana, ip_finde, day, nsu, ntu, u, itou, te_finde, te_semana, tpeu, stou, stiu, steu, ip_semana_density, ip_finde_density, te_semana_density, te_finde_density)
             else:
-                stis , stes, stos = order_arrival(ip_semana, ip_finde, day, nss, s, itos, te_finde, te_semana, tpes, stos, stis, stes)
+                print("Llega un pedido a la zona semi-urbana")
+                stis , stes, stos, nss, nts = order_arrival(ip_semana, ip_finde, day, nss, nts, s, itos, te_finde, te_semana, tpes, stos, stis, stes, ip_semana_density, ip_finde_density, te_semana_density, te_finde_density)
         elif next_event == tpem[i]:
-            stsm, stem = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde)
+            print("Salida de pedido en la zona metropolitana")
+            stsm, stem, nsm, itom = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde, te_semana_density, te_finde_density)
         elif next_event == tpes[x]:
-            stss, stes = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde)
+            print("Salida de pedido en la zona semi-urbana")
+            stss, stes, nss, itos = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde, te_semana_density, te_finde_density)
         elif next_event == tpeu[j]:
-            stsu, steu = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde)
+            print("Salida de pedido en la zona urbana")
+            stsu, steu, nsu, itou = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde, te_semana_density, te_finde_density)
 
     while (nsm > 0 or nsu > 0 or nss > 0):
         x = np.argmin(tpes)
@@ -188,35 +209,48 @@ def simulation(ip_semana, ip_finde, te_semana, te_finde):
         next_event = min(tpeu[j], tpem[i], tpes[x])
         
         if next_event == tpem[i]:
-            stsm, stem = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde)
+            print("Vaciamiento: Salida de pedido en la zona metropolitana")
+            stsm, stem, nsm, itom = deliver_order(tpem, i, stsm, stem, nsm, m, day, itom, te_semana, te_finde, te_semana_density, te_finde_density)
         elif next_event == tpes[x]:
-            stss, stes = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde)
+            print("Vaciamiento: Salida de pedido en la zona semi-urbana")
+            stss, stes, nss, itos = deliver_order(tpes, x, stss, stes, nss, s, day, itos, te_semana, te_finde, te_semana_density, te_finde_density)
         elif next_event == tpeu[j]:
-            stsu, steu = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde)
-    
-    if stos == 0:
-        stos = t
+            print("Vaciamiento: Salida de pedido en la zona urbana")
+            stsu, steu, nsu, itou = deliver_order(tpeu, j, stsu, steu, nsu, u, day, itou, te_semana, te_finde, te_semana_density, te_finde_density)
 
+    for elemento in itos:
+        if elemento == 0:
+            stos += t
+    for elemento in itom:
+        if elemento == 0:
+            stom += t
+    for elemento in itou:
+        if elemento == 0:
+            stou += t
 
 def calcular_y_mostrar_resultados():
     global stom, stos, stou, t
-    global stsm, stim, stss, stis, stiu, stsu, nt
-    global stem, stes, steu
+    global stsm, stim, stss, stis, stiu, stsu, ntm, nts, ntu
+    global stem, stes, steu, m, s, u
+    print(f"M = {m}, S = {s}, U = {u}")
+    print(f"Total de pedidos en la zona metropolitana: {ntm}")
+    print(f"Total de pedidos en la zona semi-urbana: {nts}")
+    print(f"Total de pedidos en la zona urbana: {ntu}")
 
-    print(f"Porcentaje de tiempo ocioso de repartidores en la zona metropolitana: {(stom / t) * 100} minutos")
-    print(f"Porcentaje de tiempo ocioso de repartidores en la zona semi-urbana: {(stos / t) * 100 } minutos")
-    print(f"Porcentaje de tiempo ocioso de repartidores en la zona urbana: {(stou / t) * 100} minutos")
+    print(f"Porcentaje de tiempo ocioso de repartidores en la zona metropolitana: {round((stom / (t*m)) * 100, 4)} %")
+    print(f"Porcentaje de tiempo ocioso de repartidores en la zona semi-urbana: {round((stos / (t*s)) * 100, 4)} %")
+    print(f"Porcentaje de tiempo ocioso de repartidores en la zona urbana: {round((stou / (t*u)) * 100, 4)} %")
 
-    print(f"Promedio de permanencia en sistema en la zona metropolitana: {(stsm - stim) / nt} minutos")
-    print(f"Promedio de permanencia en sistema en la zona semi-urbana: {(stss - stis) / nt} minutos")
-    print(f"Promedio de permanencia en sistema en la zona urbana: {(stsu - stiu) / nt} minutos")
+    print(f"Promedio de permanencia en sistema en la zona metropolitana: {(stsm - stim) / ntm:.2f} minutos")
+    print(f"Promedio de permanencia en sistema en la zona semi-urbana: {(stss - stis) / nts:.2f} minutos")
+    print(f"Promedio de permanencia en sistema en la zona urbana: {(stsu - stiu) / ntu:.2f} minutos")
 
-    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona metropolitana: {(stsm - stim - stem) / nt} minutos")
-    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona semi-urbana: {(stss - stis - stes) / nt} minutos")
-    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona urbana: {(stsu - stiu - steu) / nt} minutos")
+    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona metropolitana: {(round(stsm - stim,4) - round(stem, 4)) / ntm} minutos")
+    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona semi-urbana: {(round(stss - stis, 4) - round(stes, 4)) / nts} minutos")
+    print(f"Promedio de espera hasta que un pedido es atendido por un repartidor en la zona urbana: {(round(stsu - stiu,4) - round(steu, 4)) / ntu} minutos")
 
 if __name__ == "__main__":
     df = load_and_preprocess_data('zomato-dataset.csv')
-    ip_semana, ip_finde, te_semana, te_finde = calculate_kde(df)
-    simulation(ip_semana, ip_finde, te_semana, te_finde)
+    ip_semana_x, ip_semana_density, ip_finde_x, ip_finde_density, te_semana_x, te_semana_density, te_finde_x, te_finde_density = calculate_kde(df)
+    simulation(ip_semana_x, ip_semana_density, ip_finde_x, ip_finde_density, te_semana_x, te_semana_density, te_finde_x, te_finde_density)
     calcular_y_mostrar_resultados()
