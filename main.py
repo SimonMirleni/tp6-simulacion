@@ -18,7 +18,7 @@ perm = pers = peru = stes = steu = stem = 0
 stom = stos = stou = 0
 ptom = ptos = ptou = 0
 t = tpi = 0
-tf = 100000  # mins
+tf = 1000000  # mins
 nsm = nss = nsu = nts = ntu = ntm = 0
 HV = float('inf')
 
@@ -98,17 +98,11 @@ def time_for_fdp_optimized(x_range, density_values):
     """
     return np.random.choice(x_range, p=density_values)
 
-#def time_for_fdp(kde):
-#    x_range = np.linspace(0, 60, 2000)
-#    density_values = kde(x_range)
-#    density_values /= np.sum(density_values)
-#    return np.random.choice(x_range, p=density_values)
-
 def delivery_time_for_day(day, te_semana_x, te_semana_density, te_finde_x, te_finde_density):
     weekend_days = ["viernes", "sabado", "domingo"]
     return time_for_fdp_optimized(te_finde_x, te_finde_density) if day in weekend_days else time_for_fdp_optimized(te_semana_x, te_semana_density)
 
-def arrival_time_for_day(day, ip_finde_x, ip_finde_density, ip_semana_x, ip_semana_density):
+def arrival_time_for_day(day, ip_semana_x, ip_semana_density, ip_finde_x, ip_finde_density):
     weekend_days = ["viernes", "sabado", "domingo"]
     return time_for_fdp_optimized(ip_finde_x, ip_finde_density) if day in weekend_days else time_for_fdp_optimized(ip_semana_x, ip_semana_density)
 
@@ -137,7 +131,7 @@ def buscar_repartidor_libre(tpe):
 
 def order_arrival(ip_semana, ip_finde, day, ns, nt, delivery_personnel, ito, te_finde, te_semana, tpe, sto, sti, ste, ip_semana_density, ip_finde_density, te_semana_density, te_finde_density):
     global tpi, t
-    ip = arrival_time_for_day(day, ip_semana, ip_semana_density, ip_finde_x, ip_finde_density)
+    ip = arrival_time_for_day(day, ip_semana, ip_semana_density, ip_finde, ip_finde_density)
     tpi = t + ip
     ns += 1
     nt += 1
