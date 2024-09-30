@@ -9,6 +9,8 @@ Este repositorio contiene los archivos necesarios para ejecutar una simulación 
 - **`Grupo 9 - Paper.pdf`**: Documento que explica el desarrollo completo de la simulación, su enfoque y los resultados obtenidos.
 
 - **`Grupo 9 - Diagrama.png`**: Diagrama visual que representa el flujo de la simulación, incluyendo las variables clave y la lógica implementada.
+  
+- **`Grupo 9 - Presentación.pdf`**: Presentación que se va a uitilizar para la exposición del trabajo practico.
 
 - **`requirements.txt`**: Archivo que contiene las dependencias necesarias para ejecutar el código de simulación.
 
@@ -42,6 +44,10 @@ Para ejecutar el proyecto, sigue los siguientes pasos:
 Puedes encontrar el análisis completo de la simulación en el archivo PDF del paper:
 
 [Grupo 9 - Paper.pdf](./Grupo%209%20-%20Paper.pdf)
+
+También puedes encontrar la presentación utilizada para exponer el trabajo práctico en el archivo:
+
+[Grupo 9 - Presentación.pdf](./Grupo%209%20-%20Presentación.pdf)
 
 Además, el siguiente diagrama muestra gráficamente el flujo de la simulación:
 
